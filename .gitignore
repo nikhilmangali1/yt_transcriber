@@ -1,0 +1,16 @@
+# Virtual environment
+venv/
+env/
+ENV/
+.venv/
+.ENV/
+
+# Log files
+*.log
+
+# VS Code
+.vscode/
+
+# Environment files
+.env
+
