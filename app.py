@@ -1,14 +1,19 @@
-import streamlit as st                                                                                                                                                                                                                                                                                                                                                                                                       # type: ignore
-from dotenv import load_dotenv                                                                                                                                                                                                                                                                                                                                                                                               # type: ignore
+import streamlit as st  # type: ignore
+from dotenv import load_dotenv  # type: ignore
 import os
-import google.generativeai as genai                                                                                                                                                                                                                                                                                                                                                                                          # type: ignore
-from youtube_transcript_api import YouTubeTranscriptApi                                                                                                                                                                                                                                                                                                                                                                      # type: ignore
+import google.generativeai as genai  # type: ignore
+from youtube_transcript_api import YouTubeTranscriptApi  # type: ignore
 
 # Load environment variables
 load_dotenv()
 
 # Configure API key
 genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
+
+
+# models = genai.list_models()
+# for m in models:
+#     print(m.name, m.supported_generation_methods)
 
 # Define the prompt
 prompt = """
@@ -29,70 +34,54 @@ IMPORTANT: THE ENTIRE SUMMARY MUST BE IN ENGLISH ONLY.
 There is no word limit for this summary, so include all necessary details to provide a complete understanding of the video content.
 """
 
-# Extract transcript details
+# Extract transcript details (no translation)
 def extract_transcript_details(youtube_video_url):
     try:
-        video_id = youtube_video_url.split("=")[1]
-        
-        # Get list of available transcripts
+        video_id = youtube_video_url.split("v=")[1].split("&")[0]
         transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
-        transcript_text = ""
-        
-        try:
-            # Explicitly try to get English transcript
-            english_transcript = transcript_list.find_transcript(['en'])
-            transcript_data = english_transcript.fetch()
-            
-        except:
-            # If English not available, get any transcript and translate to English
-            try:
-                available_transcript = next(iter(transcript_list))
-                translated_transcript = available_transcript.translate('en')
-                transcript_data = translated_transcript.fetch()
-            except:
-                st.error("Failed to get or translate transcript to English")
-                return None
-        
-        # Combine transcript text
-        transcript_text = " ".join([i["text"] for i in transcript_data])
-        
+
+        # Get first available transcript regardless of language
+        transcript = next(iter(transcript_list))
+        transcript_data = transcript.fetch()
+
+        # ✅ FIXED LINE
+        transcript_text = " ".join([i.text for i in transcript_data])
         return transcript_text
-        
+
     except Exception as e:
-        st.error(f"Error extracting transcript: {e}")
+        st.error(f"Transcript extraction failed: {e}")
         return None
 
-# Generate Gemini content
+# Generate Gemini summary
 def generate_gemini_content(transcript_text, prompt):
     try:
-        model = genai.GenerativeModel("gemini-pro")
-        response = model.generate_content(
-            f"""IMPORTANT: Provide the summary in English only. 
-            {prompt}
-            Transcript: {transcript_text}"""
-        )
+        model = genai.GenerativeModel(model_name="gemini-1.5-flash-latest")
+        response = model.generate_content(f"{prompt}\nTranscript:\n{transcript_text}")
         return response.text
     except Exception as e:
         st.error(f"Error generating content: {e}")
         return None
 
-# Streamlit app
+# Streamlit UI
 st.title("YouTube Transcript to Detailed Notes Converter")
 youtube_link = st.text_input("Enter YouTube Video Link:")
 
 if youtube_link:
-    video_id = youtube_link.split("=")[1]
-    st.image(f"http://img.youtube.com/vi/{video_id}/0.jpg", use_column_width=True)
+    try:
+        video_id = youtube_link.split("v=")[1].split("&")[0]
+        st.image(f"http://img.youtube.com/vi/{video_id}/0.jpg", use_column_width=True)
+    except:
+        st.warning("Invalid YouTube URL")
 
 if st.button("Get Detailed Notes"):
     transcript_text = extract_transcript_details(youtube_link)
 
     if transcript_text:
-        st.write("Transcript extracted successfully!")
+        st.success("Transcript extracted successfully!")
         summary = generate_gemini_content(transcript_text, prompt)
         if summary:
             st.write(summary)
         else:
-            st.write("Failed to generate summary.")
+            st.error("Failed to generate summary.")
     else:
-        st.write("Transcript extraction failed.")
+        st.error("Transcript extraction failed.")
